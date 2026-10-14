@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Movie Recommender</title>
+<meta name="description" content="Pick movies you like and get recommendations from a collaborative filtering model trained on 100,000 MovieLens ratings.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --red:#E50914; --red2:#B81D24; --ink:#221F1F; --paper:#F5F5F1;
+  --bg:#141212; --card:#221F1F; --line:#332e2e; --mut:rgba(245,245,241,.6);
+  --display:'Bebas Neue',Impact,sans-serif; --sans:'Inter',system-ui,sans-serif;
+  --ease:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--paper);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+.wrap{max-width:1100px;margin:0 auto;padding:0 16px}
+button{font:inherit}
+
+/* ---------- Hero: a tilted wall of posters drifting sideways ---------- */
+.hero{position:relative;min-height:min(88vh,760px);display:flex;align-items:flex-end;overflow:hidden;isolation:isolate}
+.wall{position:absolute;inset:-20% -10%;display:flex;flex-direction:column;gap:14px;transform:rotate(-8deg);z-index:-2;opacity:.55}
+.row{display:flex;align-items:flex-start;gap:14px;width:max-content;animation:drift 70s linear infinite}
+.row:nth-child(2){animation-direction:reverse;animation-duration:85s}
+.row:nth-child(3){animation-duration:60s}
+.row .poster{width:150px;flex:none}
+.hero::before{content:"";position:absolute;inset:0;z-index:-1;
+  background:linear-gradient(0deg,var(--bg) 8%,rgba(20,18,18,.75) 45%,rgba(20,18,18,.35)),
+             radial-gradient(ellipse at 20% 100%,rgba(229,9,20,.35),transparent 60%)}
+.hero .wrap{width:100%;padding-bottom:56px}
+.kicker{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--paper)}
+.kicker i{width:22px;height:3px;background:var(--red);display:block}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(56px,11vw,128px);line-height:.88;letter-spacing:.01em;margin:16px 0 18px}
+h1 span{display:block;overflow:hidden}
+h1 span b{display:block;font-weight:400;animation:up 1s var(--ease) both}
+h1 span:nth-child(2) b{animation-delay:.12s;color:var(--red)}
+.lead{max-width:520px;font-size:18px;font-weight:300;color:var(--mut);animation:fade 1s var(--ease) .35s both}
+.cta{margin-top:28px;display:inline-flex;align-items:center;gap:10px;padding:14px 26px;background:var(--red);color:var(--paper);border:0;border-radius:4px;font-weight:600;font-size:16px;cursor:pointer;animation:fade 1s var(--ease) .5s both;transition:background .2s,transform .2s}
+.cta:hover{background:var(--red2);transform:translateY(-2px)}
+.cta svg{width:16px;height:16px}
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-top:8px}
+.stat{background:var(--bg);padding:20px}
+.stat b{display:block;font-family:var(--display);font-weight:400;font-size:40px;line-height:1;letter-spacing:.02em}
+.stat:nth-child(3) b{color:var(--red)}
+.stat span{font-size:12px;color:var(--mut)}
+
+/* ---------- Picker ---------- */
+.picker{position:relative;margin-top:64px;scroll-margin-top:24px}
+.label{font-family:var(--display);font-size:30px;letter-spacing:.03em;margin-bottom:12px}
+.field{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;background:var(--card);border:2px solid transparent;border-radius:6px;transition:border-color .25s}
+.field:focus-within{border-color:var(--red)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 6px 5px 12px;background:var(--red2);border-radius:4px;font-size:14px;font-weight:500;animation:pop .3s var(--ease)}
+.chip button{display:grid;place-items:center;width:22px;height:22px;border:0;border-radius:3px;background:transparent;color:var(--paper);font-size:16px;cursor:pointer}
+.chip button:hover{background:rgba(0,0,0,.25)}
+#q{flex:1;min-width:180px;padding:8px 4px;background:transparent;border:0;outline:0;color:var(--paper);font:inherit;font-size:16px}
+#q::placeholder{color:rgba(245,245,241,.4)}
+.list{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 6px);max-height:340px;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px;list-style:none;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.list[hidden]{display:none}
+.list li{display:flex;align-items:center;gap:12px;padding:6px 8px;border-radius:4px;cursor:pointer}
+.list li .poster{width:32px;flex:none;border-radius:2px}
+.list li .poster{padding:0}
+.list li .poster :is(em,strong,small){display:none}
+.list li span{flex:1}
+.list li small{color:var(--mut);font-size:12px;white-space:nowrap}
+.list li[aria-selected=true]{background:var(--red2)}
+.presets{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.presets button{padding:8px 14px;background:transparent;border:1px solid var(--line);border-radius:4px;color:var(--paper);font-size:13px;cursor:pointer;transition:border-color .2s,background .2s}
+.presets button:hover{border-color:var(--red);background:rgba(229,9,20,.1)}
+
+/* ---------- Generated posters ---------- */
+.poster{position:relative;aspect-ratio:2/3;border-radius:4px;overflow:hidden;
+  background:
+    repeating-linear-gradient(var(--a),transparent 0 var(--s),rgba(0,0,0,.14) var(--s) calc(var(--s)*2)),
+    linear-gradient(var(--a),var(--c2),var(--ink) 80%);
+  display:flex;flex-direction:column;justify-content:flex-end;padding:14px 12px}
+.poster::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(0,0,0,.8),transparent 50%)}
+/* Genre illustrations: drawn in SVG, coloured by the palette */
+.art{position:absolute;inset:0;width:100%;height:100%}
+.art .a1{fill:var(--c1)} .art .ap{fill:var(--paper)} .art .ad{fill:#0d0b0b}
+.art .sa1,.art .sap,.art .sad{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.art .sa1{stroke:var(--c1)} .art .sap{stroke:var(--paper)} .art .sad{stroke:#0d0b0b}
+.art .soft{opacity:.45}
+.art{transform-origin:50% 40%;transition:transform .6s var(--ease)}
+.card:hover .art{transform:scale(1.06)}
+.poster em{position:absolute;top:12px;left:12px;z-index:1;font-style:normal;font-size:9px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--paper);opacity:.85}
+.poster{container-type:inline-size}
+/* Title size follows the poster's own width (cqi), so long words fit on small posters */
+.poster strong{position:relative;z-index:1;font-family:var(--display);font-weight:400;font-size:clamp(14px,18cqi,34px);line-height:.95;letter-spacing:.02em;color:var(--paper);overflow-wrap:break-word}
+.poster small{position:relative;z-index:1;font-size:10px;color:var(--mut);margin-top:4px}
+.poster strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}
+.card .poster em{left:auto;right:12px}
+
+/* ---------- Results ---------- */
+.results{margin-top:56px;min-height:200px}
+.results h2{font-family:var(--display);font-weight:400;font-size:30px;letter-spacing:.03em;display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.results h2 small{font-family:var(--sans);font-size:13px;color:var(--mut);letter-spacing:0}
+.empty{padding:56px 20px;text-align:center;color:var(--mut);border:1px dashed var(--line);border-radius:6px}
+
+.feature{display:grid;grid-template-columns:200px 1fr;gap:28px;align-items:center;padding:24px;margin-bottom:28px;border-radius:6px;
+  background:linear-gradient(100deg,rgba(184,29,36,.35),var(--card) 60%);animation:rise .7s var(--ease) both}
+.badge{display:inline-block;padding:3px 8px;background:var(--red);border-radius:3px;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+.feature h3{font-family:var(--display);font-weight:400;font-size:clamp(36px,5vw,56px);line-height:.95;margin:12px 0 8px}
+.feature p{color:var(--mut)}
+.feature p b{color:var(--paper);font-weight:500}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px 12px}
+.card{position:relative;cursor:default;animation:rise .6s var(--ease) both}
+.card .poster{transition:transform .35s var(--ease),box-shadow .35s var(--ease)}
+.card:hover .poster{transform:scale(1.06);box-shadow:0 18px 40px rgba(0,0,0,.6),0 0 0 2px var(--red);z-index:2}
+.num{position:absolute;z-index:3;top:-6px;left:-4px;font-family:var(--display);font-size:44px;line-height:1;color:var(--bg);-webkit-text-stroke:2px var(--paper);pointer-events:none}
+.meta{margin-top:10px;font-size:12.5px;color:var(--mut)}
+.meta b{color:var(--paper);font-weight:500}
+.bar{height:3px;background:var(--line);border-radius:3px;margin:8px 0 6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--red);transform-origin:left;animation:grow 1s var(--ease) both}
+
+/* ---------- How it works ---------- */
+.how{margin:96px 0 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:40px;padding-top:40px;border-top:1px solid var(--line)}
+.how h3{font-family:var(--display);font-weight:400;font-size:28px;letter-spacing:.03em;margin-bottom:8px}
+.how p{color:var(--mut);font-size:15px}
+.bars{margin-top:12px;display:grid;gap:10px}
+.bars div{display:grid;grid-template-columns:150px 1fr 44px;align-items:center;gap:10px;font-size:13px;color:var(--mut)}
+.bars span{height:8px;background:var(--line);border-radius:4px;overflow:hidden}
+.bars span i{display:block;height:100%;background:rgba(245,245,241,.35);border-radius:4px;transform-origin:left;transform:scaleX(0);transition:transform 1.2s var(--ease)}
+.bars .win{color:var(--paper);font-weight:500}
+.bars .win span i{background:var(--red)}
+.bars.on span i{transform:scaleX(1)}
+.bars b{text-align:right;font-weight:500}
+footer{margin:72px 0 40px;font-size:12px;color:rgba(245,245,241,.4)}
+
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .8s var(--ease),transform .8s var(--ease)}
+.reveal.on{opacity:1;transform:none}
+
+@keyframes drift{to{transform:translateX(-50%)}}
+@keyframes up{from{transform:translateY(105%)}}
+@keyframes fade{from{opacity:0;transform:translateY(12px)}}
+@keyframes pop{from{transform:scale(.8);opacity:0}}
+@keyframes rise{from{transform:translateY(18px);opacity:0}}
+@keyframes grow{from{transform:scaleX(0)}}
+@media (prefers-reduced-motion:reduce){
+  *,*::before{animation:none!important;transition:none!important}
+  .reveal{opacity:1;transform:none}
+  .bars span i{transform:scaleX(1)}
+}
+@media (max-width:700px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .feature{grid-template-columns:110px 1fr;gap:16px;padding:16px}
+  .feature p{font-size:14px}
+  .grid{grid-template-columns:repeat(2,1fr)}
+  .row .poster{width:110px}
+  .bars div{grid-template-columns:110px 1fr 40px}
+}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wall" id="wall" aria-hidden="true"></div>
+  <div class="wrap">
+    <span class="kicker"><i></i>Machine learning project</span>
+    <h1><span><b>Your next</b></span><span><b>favorite movie</b></span></h1>
+    <p class="lead">Pick a few movies you love. A model trained on 100,000 real ratings finds what people like you watched next.</p>
+    <button class="cta" id="start">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 1.5v13l11-6.5z"/></svg>Get recommendations
+    </button>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="stats reveal">
+    <div class="stat"><b data-count="100836">0</b><span>ratings learned from</span></div>
+    <div class="stat"><b data-count="1297">0</b><span>movies to discover</span></div>
+    <div class="stat"><b data-count="73" data-suffix="%">0</b><span>hit rate in testing</span></div>
+    <div class="stat"><b data-count="15" data-prefix="+" data-suffix=" pts">0</b><span>better than "most popular"</span></div>
+  </div>
+
+  <div class="picker" id="picker">
+    <label for="q" class="label">Movies you like</label>
+    <div class="field" id="field">
+      <span id="chips" style="display:contents"></span>
+      <input id="q" type="text" autocomplete="off" placeholder="Search a movie, e.g. The Matrix"
+        role="combobox" aria-expanded="false" aria-controls="list" aria-autocomplete="list">
+    </div>
+    <ul class="list" id="list" role="listbox" hidden></ul>
+    <div class="presets">
+      <button data-p="The Matrix|Alien|Blade Runner">🚀 Sci-fi fan</button>
+      <button data-p="Toy Story|Finding Nemo|Shrek">🍿 Family night</button>
+      <button data-p="The Godfather|Pulp Fiction|Goodfellas">🔫 Crime classics</button>
+      <button data-p="The Notebook|Titanic|Pretty Woman">❤️ Romance</button>
+    </div>
+  </div>
+
+  <section class="results" aria-live="polite">
+    <h2><span>Recommended for you</span><small id="rsub"></small></h2>
+    <div id="out"></div>
+  </section>
+
+  <section class="how">
+    <div class="reveal">
+      <h3>How it works</h3>
+      <p>Two movies are similar when the <b>same people</b> watched both. The model uses no genres or descriptions, only what 610 people actually watched. Each movie keeps its 50 closest neighbors, and the movies you pick vote for theirs.</p>
+    </div>
+    <div class="reveal">
+      <h3>How well it works</h3>
+      <p>I hid 20% of each person's ratings, trained on the rest, and checked how often the top 10 contained a movie they loved.</p>
+      <div class="bars" id="bars">
+        <div><em>Random</em><span><i style="width:10.4%"></i></span><b>10%</b></div>
+        <div><em>Genres + tags</em><span><i style="width:19.5%"></i></span><b>20%</b></div>
+        <div><em>Most popular</em><span><i style="width:58.5%"></i></span><b>58%</b></div>
+        <div class="win"><em>This model</em><span><i style="width:73%"></i></span><b>73%</b></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>Data: MovieLens ml-latest-small, GroupLens Research. Built with Python, pandas and scikit-learn. Poster illustrations are original SVG drawings, one per genre, varied per movie.</footer>
+</main>
+
+<script src="model.js"></script>
+<script>
+const { movies, neighbors } = window.MODEL;
+const picked = [];
+const $ = id => document.getElementById(id);
+const q = $("q"), list = $("list");
+let options = [], active = -1;
+
+const label = i => movies[i].t + (movies[i].y ? ` (${movies[i].y})` : "");
+const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// ---- Genre illustrations (SVG, 100 x 150 canvas, drawn in the top two-thirds) ----
+// Classes: a1 = accent red, ap = off-white, ad = near-black; "s" prefix = outline only.
+function burst(cx, cy, R, r, n) {   // spiky star shape for explosions
+  let p = "";
+  for (let k = 0; k < n * 2; k++) {
+    const a = Math.PI * k / n, d = k % 2 ? r : R;
+    p += `${(cx + d * Math.cos(a)).toFixed(1)},${(cy + d * Math.sin(a)).toFixed(1)} `;
+  }
+  return p;
+}
+const dots = pts => pts.map(([x, y, s]) => `<circle cx="${x}" cy="${y}" r="${s || .9}" class="ap"/>`).join("");
+const heart = "C20 60 20 35 38 35C46 35 50 42 50 46C50 42 54 35 62 35C80 35 80 60 50 80Z";
+const ART = {
+  "Sci-Fi": `${dots([[14, 20], [30, 12, 1.3], [84, 18], [88, 70, 1.2], [12, 78], [24, 48, .7], [78, 96, .7]])}
+    <circle cx="58" cy="54" r="22" class="a1"/><circle cx="51" cy="47" r="5" class="ad soft"/><circle cx="66" cy="62" r="3" class="ad soft"/>
+    <ellipse cx="58" cy="54" rx="38" ry="8" transform="rotate(-18 58 54)" class="sap" stroke-width="2.2"/>`,
+  "Horror": `<circle cx="64" cy="38" r="20" class="ap"/><circle cx="58" cy="34" r="3" class="ad soft"/><circle cx="70" cy="45" r="2" class="ad soft"/>
+    <path d="M0 108Q50 92 100 108V150H0Z" class="ad"/>
+    <path d="M30 104L33 70L22 54M33 70L45 57M32 84L20 76M44 57L50 52M22 54L16 50" class="sad" stroke-width="3"/>
+    <path d="M60 70l4 3 4-3 1 3 3-1-4 4-4-1-4 1-4-4 3 1z M76 82l3 2 3-2 1 2 2-1-3 3-3-1-3 1-3-3 2 1z" class="ad"/>`,
+  "Romance": `<path d="M50 80${heart}" class="a1"/><path d="M50 80${heart}" class="ap soft" transform="translate(64 30) scale(.42) rotate(14)"/>
+    <path d="M50 80${heart}" class="ap soft" transform="translate(6 18) scale(.28) rotate(-16)"/>`,
+  "Action": `<polygon points="${burst(50, 55, 38, 20, 11)}" class="a1"/><polygon points="${burst(50, 55, 22, 12, 9)}" class="ap"/>
+    <circle cx="50" cy="55" r="7" class="a1"/>`,
+  "Comedy": `<circle cx="50" cy="55" r="27" class="ap"/><circle cx="41" cy="48" r="3.5" class="ad"/><circle cx="59" cy="48" r="3.5" class="ad"/>
+    <path d="M36 60Q50 76 64 60" class="sad" stroke-width="3.5"/><circle cx="34" cy="60" r="4" class="a1 soft"/><circle cx="66" cy="60" r="4" class="a1 soft"/>`,
+  "Drama": `<g transform="rotate(-14 38 52)"><ellipse cx="38" cy="52" rx="17" ry="22" class="ap"/><ellipse cx="32" cy="47" rx="3.5" ry="2.5" class="ad"/>
+    <ellipse cx="44" cy="47" rx="3.5" ry="2.5" class="ad"/><path d="M31 63Q38 57 45 63" class="sad" stroke-width="2.5"/></g>
+    <g transform="rotate(14 63 66)"><ellipse cx="63" cy="66" rx="17" ry="22" class="a1"/><ellipse cx="57" cy="61" rx="3.5" ry="2.5" class="ad"/>
+    <ellipse cx="69" cy="61" rx="3.5" ry="2.5" class="ad"/><path d="M56 72Q63 79 70 72" class="sad" stroke-width="2.5"/></g>`,
+  "Animation": `<path d="M34 64Q36 82 44 100M62 52Q60 76 52 100M76 70Q70 86 56 100" class="sap" stroke-width="1"/>
+    <ellipse cx="34" cy="50" rx="13" ry="15" class="a1"/><ellipse cx="62" cy="38" rx="15" ry="17" class="ap"/><ellipse cx="76" cy="60" rx="10" ry="12" class="a1 soft"/>
+    <ellipse cx="29" cy="44" rx="3" ry="5" class="ap soft"/><ellipse cx="57" cy="31" rx="3" ry="5" class="ad soft"/>`,
+  "Crime": `<ellipse cx="50" cy="72" rx="36" ry="7" class="ad"/><path d="M28 72Q27 42 50 44Q73 42 72 72Z" class="ad"/>
+    <path d="M40 46Q50 52 60 46" class="sap soft" stroke-width="1.5"/><rect x="28" y="62" width="44" height="7" class="a1"/>`,
+  "Mystery": `<circle cx="44" cy="50" r="17" class="sap" stroke-width="5"/><circle cx="44" cy="50" r="14" class="a1 soft"/>
+    <path d="M56 62L76 84" class="sap" stroke-width="8"/><path d="M37 43Q41 39 46 40" class="sap" stroke-width="2"/>`,
+  "Thriller": `<path d="M12 56Q50 22 88 56Q50 90 12 56Z" class="ap"/><circle cx="50" cy="56" r="15" class="a1"/><circle cx="50" cy="56" r="7" class="ad"/>
+    <circle cx="54" cy="51" r="2.5" class="ap"/>`,
+  "War": `<path d="M20 74Q20 36 50 36Q80 36 80 74Z" class="ad"/><rect x="14" y="72" width="72" height="6" rx="3" class="ad"/>
+    <path d="M22 60Q50 54 78 60" class="sa1" stroke-width="2"/>${dots([[18, 22], [84, 30], [70, 14]])}`,
+  "Western": `<circle cx="50" cy="66" r="28" class="a1"/><path d="M0 98H100V150H0Z" class="ad"/>
+    <path d="M46 98V58Q46 52 50 52Q54 52 54 58V98ZM46 80H38V68Q38 64 41 64Q44 64 44 68V76H46ZM54 74H62V62Q62 58 59 58Q56 58 56 62V70H54Z" class="ad"/>`,
+  "Fantasy": `<circle cx="72" cy="28" r="10" class="ap"/>${dots([[20, 18], [36, 30], [88, 50]])}
+    <path d="M18 104V64H24V58H28V64H32V58H36V64H40V78H60V64H64V58H68V64H72V58H76V64H82V104Z" class="ad"/>
+    <path d="M43 78V46L50 30L57 46V78Z" class="ad"/><rect x="47" y="56" width="6" height="9" rx="3" class="a1"/>`,
+  "Adventure": `<circle cx="70" cy="36" r="13" class="a1"/><polygon points="0,104 30,54 44,74 64,40 100,104" class="ad"/>
+    <polygon points="30,54 24,64 30,61 36,64" class="ap"/><polygon points="64,40 56,53 64,49 71,53" class="ap"/>`,
+  "Musical": `<g transform="translate(0 -10) rotate(-8 50 60)"><ellipse cx="36" cy="80" rx="9" ry="6.5" class="ap"/><ellipse cx="66" cy="72" rx="9" ry="6.5" class="ap"/>
+    <rect x="42" y="38" width="3.5" height="42" class="ap"/><rect x="72" y="30" width="3.5" height="42" class="ap"/>
+    <polygon points="42,38 75.5,30 75.5,38 42,46" class="a1"/></g>`,
+  "Documentary": `<circle cx="34" cy="38" r="12" class="sap" stroke-width="3"/><circle cx="60" cy="38" r="12" class="sap" stroke-width="3"/>
+    <rect x="22" y="52" width="48" height="30" rx="4" class="ap"/><polygon points="70,60 84,52 84,82 70,74" class="ap"/><circle cx="34" cy="67" r="6" class="a1"/>`,
+  "Film-Noir": `<path d="M0 30H100M0 44H100M0 58H100M0 72H100M0 86H100" class="sap soft" stroke-width="6"/>
+    <circle cx="50" cy="66" r="12" class="ad"/><path d="M24 108Q26 82 50 80Q74 82 76 108Z" class="ad"/><path d="M34 58H66L60 52H40Z" class="ad"/>`,
+  "Film": `<circle cx="50" cy="56" r="28" class="ap"/><circle cx="50" cy="56" r="5" class="ad"/>
+    ${[0, 1, 2, 3, 4].map(k => `<circle cx="${(50 + 16 * Math.cos(k * 1.2566)).toFixed(1)}" cy="${(56 + 16 * Math.sin(k * 1.2566)).toFixed(1)}" r="6" class="ad"/>`).join("")}`,
+};
+ART["Children"] = ART["Animation"];
+// Most specific genre first: "Action|Horror|Sci-Fi" gets the Horror drawing.
+const PRIORITY = ["Animation", "Horror", "Sci-Fi", "Western", "War", "Musical", "Documentary", "Film-Noir", "Fantasy",
+  "Romance", "Crime", "Mystery", "Thriller", "Children", "Comedy", "Adventure", "Action", "Drama"];
+
+// ---- Generated poster: same movie -> same design, every time ----
+const PAIRS = [["#E50914", "#B81D24"], ["#E50914", "#3a1416"], ["#F5F5F1", "#B81D24"], ["#B81D24", "#5a1418"], ["#E50914", "#221F1F"]];
+function poster(i) {
+  const m = movies[i];
+  // Turn the title into a number (a "hash"), then draw repeatable random choices from it.
+  let h = 2166136261;
+  for (const ch of m.t) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  const r = n => (h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0) % n;
+  const genre = PRIORITY.find(g => m.g.includes(g)) || "Film";
+  const [c1, c2] = PAIRS[r(PAIRS.length)];
+  const style = `--a:${150 + r(60)}deg;--s:${6 + r(14)}px;--c1:${c1};--c2:${c2}`;
+  // Small per-movie twist: mirror, shift and resize the drawing a little.
+  const flip = r(2) ? "translate(100 0) scale(-1 1)" : "";
+  const shift = `translate(${r(13) - 6} ${r(9) - 14}) translate(50 55) scale(${(.9 + r(25) / 100).toFixed(2)}) translate(-50 -55)`;
+  return `<div class="poster" style="${style}">` +
+    `<svg class="art" viewBox="0 0 100 150" preserveAspectRatio="xMidYMid slice" aria-hidden="true">` +
+    `<g transform="${flip} ${shift}">${ART[genre]}</g></svg>` +
+    `<em>${esc(genre === "Film" ? m.g[0] || "Film" : genre)}</em>` +
+    `<strong>${esc(m.t)}</strong>${m.y ? `<small>${m.y}</small>` : ""}</div>`;
+}
+
+// ---- Hero wall: the most-rated movies, each row duplicated for a seamless loop ----
+const famous = movies.map((m, i) => i).sort((a, b) => movies[b].n - movies[a].n).slice(0, 48);
+$("wall").innerHTML = [0, 1, 2].map(k => {
+  const row = famous.filter((_, j) => j % 3 === k).map(poster).join("");
+  return `<div class="row">${row}${row}</div>`;
+}).join("");
+
+// ---- Recommendation: same math as Collaborative v3 in 04_evaluate.py ----
+function recommend(n = 13) {
+  const chosen = new Set(picked);
+  const scored = [];
+  movies.forEach((_, j) => {
+    if (chosen.has(j)) return;
+    let score = 0, best = -1, bestW = 0;
+    for (const [i, w] of neighbors[j]) {
+      if (chosen.has(i)) {
+        score += w;
+        if (w > bestW) { bestW = w; best = i; }
+      }
+    }
+    if (score > 0) scored.push({ j, score, because: best });
+  });
+  return scored.sort((a, b) => b.score - a.score || movies[b.j].n - movies[a.j].n).slice(0, n);
+}
+
+function render() {
+  $("chips").innerHTML = picked.map(i =>
+    `<span class="chip">${esc(label(i))}<button aria-label="Remove ${esc(movies[i].t)}" data-rm="${i}">×</button></span>`
+  ).join("");
+  q.placeholder = picked.length ? "Add another movie…" : "Search a movie, e.g. The Matrix";
+
+  const out = $("out");
+  if (!picked.length) {
+    $("rsub").textContent = "";
+    out.innerHTML = `<div class="empty">Add one or more movies above, or try a preset.</div>`;
+    return;
+  }
+  const recs = recommend();
+  if (!recs.length) {
+    $("rsub").textContent = "";
+    out.innerHTML = `<div class="empty">No strong matches yet. Try adding another movie.</div>`;
+    return;
+  }
+  $("rsub").textContent = `Top ${recs.length} of ${movies.length.toLocaleString("en")} movies`;
+  const top = recs[0].score;
+  const [first, ...rest] = recs;
+  const fm = movies[first.j];
+  out.innerHTML =
+    `<article class="feature">${poster(first.j)}<div>
+      <span class="badge">Top pick</span>
+      <h3>${esc(fm.t)}</h3>
+      <p>${fm.y ? fm.y + " · " : ""}${esc(fm.g.join(" · "))}</p>
+      <p style="margin-top:10px">Because you liked <b>${esc(movies[first.because].t)}</b>. The people who watched your picks watched this one the most.</p>
+    </div></article>
+    <div class="grid">${rest.map((r, k) => `
+      <article class="card" style="animation-delay:${120 + k * 45}ms">
+        <span class="num">${k + 2}</span>
+        ${poster(r.j)}
+        <div class="bar" title="Match strength"><i style="width:${Math.max(8, r.score / top * 100)}%;animation-delay:${300 + k * 45}ms"></i></div>
+        <div class="meta">Because you liked <b>${esc(movies[r.because].t)}</b></div>
+      </article>`).join("")}</div>`;
+}
+
+function add(i) {
+  if (i >= 0 && !picked.includes(i)) picked.push(i);
+  q.value = ""; closeList(); render(); q.focus();
+}
+
+// ---- Search box with keyboard-friendly suggestions ----
+function search(text) {
+  const t = norm(text.trim());
+  if (!t) return [];
+  return movies.map((m, i) => ({ i, title: norm(m.t) }))
+    .filter(o => !picked.includes(o.i) && o.title.includes(t))
+    .sort((a, b) => (b.title.startsWith(t) - a.title.startsWith(t)) || movies[b.i].n - movies[a.i].n)
+    .slice(0, 8).map(o => o.i);
+}
+function openList() {
+  options = search(q.value); active = options.length ? 0 : -1;
+  if (!options.length) return closeList();
+  list.innerHTML = options.map((i, k) =>
+    `<li role="option" id="opt${k}" data-i="${i}" aria-selected="${k === active}">
+      ${poster(i)}<span>${esc(label(i))}</span><small>${movies[i].n} ratings</small></li>`).join("");
+  list.hidden = false; q.setAttribute("aria-expanded", "true");
+  q.setAttribute("aria-activedescendant", "opt0");
+}
+function closeList() {
+  list.hidden = true; options = []; active = -1;
+  q.setAttribute("aria-expanded", "false"); q.removeAttribute("aria-activedescendant");
+}
+function move(d) {
+  if (!options.length) return;
+  active = (active + d + options.length) % options.length;
+  [...list.children].forEach((li, k) => li.setAttribute("aria-selected", k === active));
+  list.children[active].scrollIntoView({ block: "nearest" });
+  q.setAttribute("aria-activedescendant", "opt" + active);
+}
+
+q.addEventListener("input", openList);
+q.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown") { e.preventDefault(); list.hidden ? openList() : move(1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+  else if (e.key === "Enter" && active >= 0) { e.preventDefault(); add(options[active]); }
+  else if (e.key === "Escape") closeList();
+  else if (e.key === "Backspace" && !q.value && picked.length) { picked.pop(); render(); }
+});
+list.addEventListener("mousedown", e => {
+  const li = e.target.closest("li"); if (li) { e.preventDefault(); add(+li.dataset.i); }
+});
+q.addEventListener("blur", closeList);
+$("field").addEventListener("click", e => {
+  const rm = e.target.closest("[data-rm]");
+  if (rm) { picked.splice(picked.indexOf(+rm.dataset.rm), 1); render(); }
+  q.focus();
+});
+function pickTitles(list) {
+  picked.length = 0;
+  list.split("|").forEach(t => {
+    const i = movies.findIndex(m => m.t.toLowerCase() === t.trim().toLowerCase());
+    if (i >= 0 && !picked.includes(i)) picked.push(i);
+  });
+  render();
+}
+document.querySelectorAll("[data-p]").forEach(b => b.addEventListener("click", () => pickTitles(b.dataset.p)));
+$("start").addEventListener("click", () => {
+  $("picker").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  setTimeout(() => q.focus({ preventScroll: true }), 500);
+});
+
+// ---- Scroll animations: fade sections in, count numbers up, grow bars ----
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function countUp(el) {
+  const end = +el.dataset.count, pre = el.dataset.prefix || "", suf = el.dataset.suffix || "";
+  const show = v => el.textContent = pre + Math.round(v).toLocaleString("en") + suf;
+  if (reduce) return show(end);
+  const t0 = performance.now();
+  (function tick(t) {
+    const p = Math.min(1, (t - t0) / 1400);
+    show(end * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+const io = new IntersectionObserver(entries => entries.forEach(e => {
+  if (!e.isIntersecting) return;
+  e.target.classList.add("on");
+  e.target.querySelectorAll("[data-count]").forEach(countUp);
+  if (e.target.contains($("bars"))) $("bars").classList.add("on");
+  io.unobserve(e.target);
+}), { threshold: .25 });
+document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+
+// A shared link like ?picks=The Matrix|Alien opens with those movies already chosen.
+const fromLink = new URLSearchParams(location.search).get("picks");
+fromLink ? pickTitles(fromLink) : render();
+</script>
+</body>
+</html>
