@@ -152,6 +152,9 @@ footer{margin:72px 0 40px;font-size:12px;color:rgba(245,245,241,.4)}
   .row .poster{width:110px}
   .bars div{grid-template-columns:110px 1fr 40px}
 }
+/* big screens: scale the whole page up (x1.1 from 1800 px, x1.25 from 2200, x1.5 from 2800) */
+:root{--z:1}@media(min-width:1800px){:root{--z:1.1}}@media(min-width:2200px){:root{--z:1.25}}@media(min-width:2800px){:root{--z:1.5}}
+body{zoom:var(--z)}
 </style>
 </head>
 <body>
